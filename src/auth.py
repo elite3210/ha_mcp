@@ -1,3 +1,4 @@
+import secrets
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -5,26 +6,13 @@ from fastapi import HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials
 
 from src.config import settings
-from src.ha.client import ha_client
 
 
-async def verify_ha_credentials(username: str, password: str) -> bool:
-    """Verifica usuario/contraseña contra Home Assistant usando su API de auth."""
-    import aiohttp
-
-    url = f"{settings.ha_url.rstrip('/')}/api/auth/token"
-    data = {
-        "grant_type": "password",
-        "username": username,
-        "password": password,
-        "client_id": "http://localhost/",
-    }
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, data=data) as resp:
-                return resp.status == 200
-    except Exception:
-        return False
+def verify_credentials(username: str, password: str) -> bool:
+    """Verifica usuario y contraseña contra los valores definidos en .env."""
+    user_ok = secrets.compare_digest(username, settings.mcp_username)
+    pass_ok = secrets.compare_digest(password, settings.mcp_password)
+    return user_ok and pass_ok
 
 
 def create_jwt(username: str) -> str:

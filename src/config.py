@@ -5,6 +5,10 @@ class Settings(BaseSettings):
     ha_url: str = "http://127.0.0.1:8123"
     ha_token: str
 
+    # Credenciales locales para el login de Heinzbot → ha-mcp
+    mcp_username: str
+    mcp_password: str
+
     jwt_secret: str
     jwt_expire_hours: int = 8
 
