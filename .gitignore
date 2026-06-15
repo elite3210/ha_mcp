@@ -1,0 +1,24 @@
+# Secretos — NUNCA subir al repo
+.env
+
+# Entorno virtual Python
+.venv/
+venv/
+
+# Logs
+*.log
+*.jsonl
+
+# Cache de Python (archivos compilados temporales)
+__pycache__/
+*.py[cod]
+*.pyo
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
