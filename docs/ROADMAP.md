@@ -140,9 +140,132 @@ Ejemplo de uso: *"Activa la rutina de buenas noches"*
 |---------|-------------|
 | Tests automatizados | pytest con mocks de la API de HA |
 | Notificaciones push | HA notifica a Heinzbot cuando algo cambia (WebSocket) |
-| Múltiples usuarios | Permisos diferenciados por usuario |
+| **Sistema de permisos por usuario** | **Ver sección detallada abajo** |
 | Panel de auditoría | Visualizar el audit.jsonl via endpoint /admin |
 | Rate limiting | Protección contra abuso de la API |
+
+---
+
+## Fase 4 (detalle) — Sistema de permisos por usuario
+
+### Contexto y motivación
+
+**Situación actual:** Heinzbot usa un token Bearer fijo de 1 año preconfigurado en la app.
+Ese token identifica al usuario `eli` y tiene acceso a todas las tools.
+
+**Problema futuro:** Si quieres que otras personas usen el sistema (familia, empleados,
+visitas), necesitas controlar qué puede hacer cada uno. Por ejemplo:
+- `eli` → acceso total a todas las tools
+- `visita` → solo puede consultar, no encender ni apagar
+- `empleado` → puede controlar luces del local pero no del dormitorio
+
+### Cómo funciona el flujo con permisos
+
+```mermaid
+flowchart TD
+    CALL["POST /mcp con Bearer JWT"] --> PROTO["protocol.py\nextrae usuario del JWT\n(ej: 'visita')"]
+    PROTO --> DISPATCH["registry.py\nverifica permisos del usuario"]
+    DISPATCH --> CHECK{¿usuario tiene permiso\npara esta tool?}
+    CHECK -->|Sí| TOOL["lights.py\nejecutar acción en HA"]
+    CHECK -->|No| DENY["Devuelve: 'Sin permiso'"]
+    TOOL --> AUDIT["audit.py\nregistra quién hizo qué"]
+```
+
+### Qué hay que modificar (solo en el servidor, no en Heinzbot)
+
+#### 1. `src/config.py` — agregar tabla de permisos
+
+```python
+# Diccionario de permisos: usuario → lista de tools permitidas
+PERMISSIONS: dict[str, list[str]] = {
+    "eli": [
+        "ha_list_lights",
+        "ha_get_light_state",
+        "ha_turn_on_light",
+        "ha_turn_off_light",
+    ],
+    "visita": [
+        "ha_list_lights",       # solo puede ver
+        "ha_get_light_state",   # solo puede consultar
+        # NO tiene ha_turn_on_light ni ha_turn_off_light
+    ],
+}
+```
+
+#### 2. `src/mcp/tools/registry.py` — verificar permisos antes de ejecutar
+
+```python
+from src.config import PERMISSIONS
+
+async def dispatch_tool(name: str, params: dict, user: str) -> str:
+    # Verificar si el usuario tiene permiso para esta tool
+    allowed = PERMISSIONS.get(user, [])
+    if name not in allowed:
+        return f"El usuario '{user}' no tiene permiso para usar '{name}'."
+
+    # Si tiene permiso, ejecutar normalmente
+    if name in _LIGHT_TOOL_NAMES:
+        return await handle_light_tool(name, params, user)
+
+    return f"Tool '{name}' no encontrada."
+```
+
+#### 3. Crear usuarios adicionales
+
+**Opción A — Usuario único (situación actual):**
+El `.env` tiene un solo `MCP_USERNAME` / `MCP_PASSWORD`. Para múltiples usuarios
+habría que cambiar el sistema de credenciales.
+
+**Opción B — Lista de usuarios en config (recomendada para el futuro):**
+
+```python
+# En config.py, reemplazar MCP_USERNAME/MCP_PASSWORD por un dict:
+USERS: dict[str, str] = {
+    "eli":      "password_de_eli",
+    "visita":   "password_de_visita",
+    "empleado": "password_del_empleado",
+}
+```
+
+```python
+# En auth.py, verificar contra el dict:
+def verify_credentials(username: str, password: str) -> bool:
+    stored = USERS.get(username)
+    if not stored:
+        return False
+    return secrets.compare_digest(password, stored)
+```
+
+### Para que Heinzbot use usuario/contraseña (depende de la app)
+
+El servidor **ya tiene el endpoint `/auth/login` listo**. No necesita cambios.
+Lo que falta es que Heinzbot implemente el flujo:
+
+```mermaid
+sequenceDiagram
+    participant H as Heinzbot
+    participant A as /auth/login
+    participant M as /mcp
+
+    H->>A: POST {username: "visita", password: "..."}
+    A-->>H: {access_token: "eyJ..."}
+    H->>M: POST /mcp con Bearer eyJ... (contiene sub:"visita")
+    M->>M: Verifica permisos de "visita"
+    M-->>H: Solo devuelve tools permitidas
+```
+
+Cuando Heinzbot soporte el formulario de usuario+contraseña en los conectores,
+el servidor responderá automáticamente con permisos diferenciados sin cambios adicionales.
+
+### Archivos a modificar cuando se implemente
+
+| Archivo | Cambio |
+|---------|--------|
+| `src/config.py` | Reemplazar `MCP_USERNAME/MCP_PASSWORD` por dict `USERS` y agregar dict `PERMISSIONS` |
+| `src/auth.py` | `verify_credentials` busca en dict `USERS` en lugar de comparar con variable única |
+| `src/mcp/tools/registry.py` | `dispatch_tool` verifica permisos antes de ejecutar |
+| `.env` | Ya no necesita `MCP_USERNAME/MCP_PASSWORD` (pasan al código) |
+| `docs/API_SPEC.md` | Documentar que el JWT contiene el usuario y que los permisos son por rol |
 
 ---
 
