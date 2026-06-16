@@ -56,7 +56,7 @@ gantt
 
 ---
 
-## Fase 2 — Despliegue en VPS 🔄 EN CURSO
+## Fase 2 — Despliegue en VPS ✅ COMPLETADA (2026-06-15)
 
 **Objetivo:** El servidor corre en producción y Heinzbot puede usarlo.
 
@@ -78,16 +78,28 @@ flowchart TD
 
 ### Checklist Fase 2
 
-- [ ] Crear Long-Lived Token en Home Assistant
-- [ ] Generar JWT_SECRET con `openssl rand -hex 32`
-- [ ] `git add . && git commit && git push`
-- [ ] SSH al VPS y clonar en `/opt/ha-mcp`
-- [ ] Crear y completar `/opt/ha-mcp/.env`
-- [ ] Instalar el servicio systemd
-- [ ] Verificar `curl http://127.0.0.1:8002/health`
-- [ ] Agregar locations `/mcp` y `/auth` en Nginx (jarvis.heinzsport.com)
-- [ ] Probar login desde Heinzbot
-- [ ] Probar `ha_list_lights` desde Heinzbot
+- [x] Crear Long-Lived Token en Home Assistant
+- [x] Generar JWT_SECRET con `openssl rand -hex 32`
+- [x] `git add . && git commit && git push`
+- [x] SSH al VPS y clonar en `/opt/ha-mcp`
+- [x] Crear y completar `/opt/ha-mcp/.env`
+- [x] Instalar el servicio systemd
+- [x] Verificar `curl http://127.0.0.1:8002/health`
+- [x] Agregar locations `/mcp`, `/auth` y `/health` en Nginx (jarvis.heinzsport.com)
+- [x] Probar login desde terminal — JWT generado correctamente
+- [x] Probar `ha_list_lights` — devuelve 15 dispositivos Tuya reales
+- [x] Probar `ha_turn_on_light` — enciende luz física desde terminal
+- [x] Heinzbot conectado — enciende luz de la sala por voz/chat ✅
+
+### Notas del despliegue
+
+- Heinzbot solo acepta token Bearer preconfigurado (no flujo de login).
+  Se generó un JWT de 1 año con `/tmp/gen_token.py`. Renueva en **junio 2027**.
+- Se agregó `location /health` en Nginx además de `/mcp` y `/auth`
+  (sin esto, `/health` lo capturaba HA y devolvía 404).
+- HA moderno no soporta `grant_type=password` via API REST.
+  La auth se resolvió con credenciales locales en `.env` (MCP_USERNAME / MCP_PASSWORD).
+- El token HA_TOKEN compartido en el chat debe rotarse por seguridad.
 
 ---
 
